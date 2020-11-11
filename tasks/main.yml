@@ -22,22 +22,27 @@
     state: present
   when: ansible_os_family == 'Debian'
 
-- name: Download GitLab repository installation script.
-  get_url:
-    url: "{{ gitlab_repository_installation_script_url }}"
-    dest: /tmp/gitlab_install_repository.sh
-    validate_certs: "{{ gitlab_download_validate_certs }}"
-  when: not gitlab_file.stat.exists
-
-- name: Install GitLab repository.
-  command: bash /tmp/gitlab_install_repository.sh
-  register: output
-  when: not gitlab_file.stat.exists
+- name: Get the installed version of Gitlab
+  command: rpm -qa 'gitlab*'
+  register: installed_version
+  when: gitlab_file.stat.exists
 
 - name: Define the Gitlab package name.
   set_fact:
     gitlab_package_name: "{{ gitlab_edition }}{{ gitlab_package_version_separator }}{{ gitlab_version }}"
   when: gitlab_version | default(false)
+
+- name: Download GitLab repository installation script.
+  get_url:
+    url: "{{ gitlab_repository_installation_script_url }}"
+    dest: /tmp/gitlab_install_repository.sh
+    validate_certs: "{{ gitlab_download_validate_certs }}"
+  when: not gitlab_file.stat.exists or installed_version.stdout not in gitlab_package_name
+
+- name: Install GitLab repository.
+  command: bash /tmp/gitlab_install_repository.sh
+  register: output
+  when: not gitlab_file.stat.exists or installed_version.stdout not in gitlab_package_name
 
 - name: Install GitLab
   package:
@@ -45,7 +50,7 @@
     state: present
   async: 300
   poll: 5
-  when: not gitlab_file.stat.exists
+  when: not gitlab_file.stat.exists or installed_version.stdout not in gitlab_package_name
 
 # Start and configure GitLab. Sometimes the first run fails, but after that,
 # restarts fix problems, so ignore failures on this run.
